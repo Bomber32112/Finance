@@ -1,0 +1,30 @@
+﻿<Window x:Class="Finance.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Finance"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+    <TabControl>
+        <TabItem Header="Доходы">
+            <StackPanel>
+                <ComboBox>
+                    <Button Content="Add Category" HorizontalAlignment="Stretch" Width="1000"/>
+                </ComboBox>
+                <DataGrid>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Binding ="{Binding someIncomes}"/>
+                        <DataGridTextColumn/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </StackPanel>
+        </TabItem>
+        <TabItem Header="Расходы">
+            
+        </TabItem>
+        <TabItem Header="Финансы">
+            
+        </TabItem>
+    </TabControl>
+</Window>
