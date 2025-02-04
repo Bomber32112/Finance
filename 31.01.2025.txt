@@ -1,0 +1,323 @@
+Вам необходимо всенепременно обязательно нужно создать приложение, которое будет вести учет ваших финансов +
+Создайте в коде классы для хранения записей о доходах, расходах. В обоих случаях нужна дата и сумма, +
+для доходов нужно указывать источник, для расходов - категорию расходов. +
+Создайте класс DB, который будет хранить эти записи, а также набор источников доходов и категорий расходов.+
+Окно приложения должно состоять из нескольких вкладок, их можно организовать через элемент TabControl. 
+Каждая вкладка, это отдельный тег TabItem. TabItem содержит одно значение, которое может быть контейнером (grid, stackpanel и тп), 
+а в контейнере уже будут поля, списки и тд.
+Пример контрола:
+<TabControl>
+    <TabItem Header="Вкладка 1">Первая вкладка</TabItem>
+    <TabItem Header="Вкладка 2">
+		<StackPanel>
+			<RadioButton IsChecked="True">iPhone S6</RadioButton>
+			<RadioButton>LG G 4</RadioButton>
+			<RadioButton>Lumia 550</RadioButton>
+	   </StackPanel>
+	</TabItem>
+</TabControl>
+Итого, должно быть как минимум 3 вкладки: Доходы, Расходы, Финансы. Вкладка с доходами нужна для отображения и редактирования доходов, 
+вкладка с расходами аналогично, вкладку с Финансами нужно заполнить различными отчетами (их можно оформить в виде отдельных горизонтальных 
+блоков):
+1) Текущий баланс (с учетом всех расходов и доходов)
+2) Основной источник дохода (смотрим, какой источник встречается чаще всего в записях с доходом)
+3) Самая затратная категория (аналогично)
+4) Сумма доходов и расходов за период времени (нужно два поля с датами, вывести сумму расходов, доходов и их разницу, 
+чтобы было понятно, в минусе мы или в плюсе)
+
+ps: для выбора у записи типа категории/расхода можно создать combobox, задать ему набор типов в itemssource
+ (например {Binding Categories}), а в selecteditem привязать свойство (например Category) у изменяемого объекта
+ (например {Binding EditRow.Category})
+
+
+Ниже представлен пример реализации приложения на C# с использованием WPF. В коде используются классы для хранения данных, а также XAML-разметка для создания интерфейса. Но тут нет отдельной VM для окна.
+
+---
+
+### 1. Классы для хранения данных
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace FinanceApp
+{
+    public class Income
+    {
+        public DateTime Date { get; set; }
+        public decimal Amount { get; set; }
+        public string Source { get; set; }
+    }
+
+    public class Expense
+    {
+        public DateTime Date { get; set; }
+        public decimal Amount { get; set; }
+        public string Category { get; set; }
+    }
+
+    public class DB
+    {
+        public List<Income> Incomes { get; set; } = new List<Income>();
+        public List<Expense> Expenses { get; set; } = new List<Expense>();
+
+        public List<string> IncomeSources { get; set; } = new List<string> { "Зарплата", "Фриланс", "Инвестиции" };
+        public List<string> ExpenseCategories { get; set; } = new List<string> { "Еда", "Транспорт", "Развлечения", "Жилье" };
+
+        public decimal GetBalance()
+        {
+            decimal totalIncome = Incomes.Sum(i => i.Amount);
+            decimal totalExpense = Expenses.Sum(e => e.Amount);
+            return totalIncome - totalExpense;
+        }
+
+        public string GetMainIncomeSource()
+        {
+            return Incomes.GroupBy(i => i.Source)
+                          .OrderByDescending(g => g.Count())
+                          .Select(g => g.Key)
+                          .FirstOrDefault();
+        }
+
+        public string GetMostExpensiveCategory()
+        {
+            return Expenses.GroupBy(e => e.Category)
+                           .OrderByDescending(g => g.Sum(x => x.Amount))
+                           .Select(g => g.Key)
+                           .FirstOrDefault();
+        }
+
+        public (decimal TotalIncome, decimal TotalExpense, decimal Difference) GetTotalsForPeriod(DateTime startDate, DateTime endDate)
+        {
+            var incomesInRange = Incomes.Where(i => i.Date >= startDate && i.Date <= endDate).Sum(i => i.Amount);
+            var expensesInRange = Expenses.Where(e => e.Date >= startDate && e.Date <= endDate).Sum(e => e.Amount);
+            return (incomesInRange, expensesInRange, incomesInRange - expensesInRange);
+        }
+    }
+}
+```
+
+---
+
+### 2. XAML-разметка для интерфейса
+
+```xml
+<Window x:Class="FinanceApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Учет финансов" Height="450" Width="800">
+    <Grid>
+        <TabControl>
+            <!-- Вкладка Доходы -->
+            <TabItem Header="Доходы">
+                <StackPanel Margin="10">
+                    <TextBlock Text="Добавить доход" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <DatePicker SelectedDate="{Binding NewIncome.Date}" Margin="0,0,0,5"/>
+                    <TextBox Text="{Binding NewIncome.Amount, UpdateSourceTrigger=PropertyChanged}" 
+                             PlaceholderText="Сумма" Margin="0,0,0,5"/>
+                    <ComboBox ItemsSource="{Binding IncomeSources}" 
+                              SelectedItem="{Binding NewIncome.Source}" Margin="0,0,0,10"/>
+                    <Button Content="Добавить" Command="{Binding AddIncomeCommand}"/>
+
+                    <DataGrid ItemsSource="{Binding Incomes}" AutoGenerateColumns="False" Margin="0,20,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=\{0:dd.MM.yyyy\}}"/>
+                            <DataGridTextColumn Header="Сумма" Binding="{Binding Amount}"/>
+                            <DataGridTextColumn Header="Источник" Binding="{Binding Source}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Вкладка Расходы -->
+            <TabItem Header="Расходы">
+                <StackPanel Margin="10">
+                    <TextBlock Text="Добавить расход" FontWeight="Bold" Margin="0,0,0,10"/>
+                    <DatePicker SelectedDate="{Binding NewExpense.Date}" Margin="0,0,0,5"/>
+                    <TextBox Text="{Binding NewExpense.Amount, UpdateSourceTrigger=PropertyChanged}" 
+                             PlaceholderText="Сумма" Margin="0,0,0,5"/>
+                    <ComboBox ItemsSource="{Binding ExpenseCategories}" 
+                              SelectedItem="{Binding NewExpense.Category}" Margin="0,0,0,10"/>
+                    <Button Content="Добавить" Command="{Binding AddExpenseCommand}"/>
+
+                    <DataGrid ItemsSource="{Binding Expenses}" AutoGenerateColumns="False" Margin="0,20,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Дата" Binding="{Binding Date, StringFormat=\{0:dd.MM.yyyy\}}"/>
+                            <DataGridTextColumn Header="Сумма" Binding="{Binding Amount}"/>
+                            <DataGridTextColumn Header="Категория" Binding="{Binding Category}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Вкладка Финансы -->
+            <TabItem Header="Финансы">
+                <StackPanel Margin="10">
+                    <TextBlock Text="Текущий баланс:" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Balance, StringFormat={}{0:C}}"/>
+
+                    <TextBlock Text="Основной источник дохода:" FontWeight="Bold" Margin="0,20,0,5"/>
+                    <TextBlock Text="{Binding MainIncomeSource}"/>
+
+                    <TextBlock Text="Самая затратная категория:" FontWeight="Bold" Margin="0,20,0,5"/>
+                    <TextBlock Text="{Binding MostExpensiveCategory}"/>
+
+                    <TextBlock Text="Суммы за период:" FontWeight="Bold" Margin="0,20,0,5"/>
+                    <DatePicker SelectedDate="{Binding StartDate}" Margin="0,0,0,5"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" Margin="0,0,0,5"/>
+                    <Button Content="Посчитать" Command="{Binding CalculateTotalsCommand}"/>
+
+                    <TextBlock Text="{Binding TotalsReport}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>
+```
+
+---
+
+### 3. ViewModel для привязки данных
+
+```csharp
+using System;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Input;
+
+namespace FinanceApp
+{
+    public class MainWindowViewModel : INotifyPropertyChanged
+    {
+        private readonly DB _db = new DB();
+
+        public ObservableCollection<Income> Incomes { get; set; }
+        public ObservableCollection<Expense> Expenses { get; set; }
+
+        public List<string> IncomeSources => _db.IncomeSources;
+        public List<string> ExpenseCategories => _db.ExpenseCategories;
+
+        private Income _newIncome = new Income();
+        public Income NewIncome
+        {
+            get => _newIncome;
+            set { _newIncome = value; OnPropertyChanged(nameof(NewIncome)); }
+        }
+
+        private Expense _newExpense = new Expense();
+        public Expense NewExpense
+        {
+            get => _newExpense;
+            set { _newExpense = value; OnPropertyChanged(nameof(NewExpense)); }
+        }
+
+        public ICommand AddIncomeCommand { get; }
+        public ICommand AddExpenseCommand { get; }
+        public ICommand CalculateTotalsCommand { get; }
+
+        private DateTime _startDate = DateTime.Now.AddMonths(-1);
+        public DateTime StartDate
+        {
+            get => _startDate;
+            set { _startDate = value; OnPropertyChanged(nameof(StartDate)); }
+        }
+
+        private DateTime _endDate = DateTime.Now;
+        public DateTime EndDate
+        {
+            get => _endDate;
+            set { _endDate = value; OnPropertyChanged(nameof(EndDate)); }
+        }
+
+        public decimal Balance => _db.GetBalance();
+        public string MainIncomeSource => _db.GetMainIncomeSource();
+        public string MostExpensiveCategory => _db.GetMostExpensiveCategory();
+
+        private string _totalsReport;
+        public string TotalsReport
+        {
+            get => _totalsReport;
+            set { _totalsReport = value; OnPropertyChanged(nameof(TotalsReport)); }
+        }
+
+        public MainWindowViewModel()
+        {
+            Incomes = new ObservableCollection<Income>(_db.Incomes);
+            Expenses = new ObservableCollection<Expense>(_db.Expenses);
+
+            AddIncomeCommand = new RelayCommand(AddIncome);
+            AddExpenseCommand = new RelayCommand(AddExpense);
+            CalculateTotalsCommand = new RelayCommand(CalculateTotals);
+        }
+
+        private void AddIncome()
+        {
+            _db.Incomes.Add(NewIncome);
+            Incomes.Add(NewIncome);
+            NewIncome = new Income();
+            OnPropertyChanged(nameof(Balance));
+            OnPropertyChanged(nameof(MainIncomeSource));
+        }
+
+        private void AddExpense()
+        {
+            _db.Expenses.Add(NewExpense);
+            Expenses.Add(NewExpense);
+            NewExpense = new Expense();
+            OnPropertyChanged(nameof(Balance));
+            OnPropertyChanged(nameof(MostExpensiveCategory));
+        }
+
+        private void CalculateTotals()
+        {
+            var totals = _db.GetTotalsForPeriod(StartDate, EndDate);
+            TotalsReport = $"Доходы: {totals.TotalIncome:C}, Расходы: {totals.TotalExpense:C}, Разница: {totals.Difference:C}";
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged(string propertyName) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+```
+
+---
+
+### 4. RelayCommand для команд
+
+```csharp
+using System;
+using System.Windows.Input;
+
+namespace FinanceApp
+{
+    public class RelayCommand : ICommand
+    {
+        private readonly Action _execute;
+        private readonly Func<bool> _canExecute;
+
+        public RelayCommand(Action execute, Func<bool> canExecute = null)
+        {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+            _canExecute = canExecute;
+        }
+
+        public bool CanExecute(object parameter) => _canExecute == null || _canExecute();
+
+        public void Execute(object parameter) => _execute();
+
+        public event EventHandler CanExecuteChanged
+        {
+            add => CommandManager.RequerySuggested += value;
+            remove => CommandManager.RequerySuggested -= value;
+        }
+    }
+}
+```
+
+---
+
+### Заключение
+
+Это базовая реализация приложения для учета финансов. Вы можете расширить функциональность, добавив сохранение данных в файл или базу данных, улучшив интерфейс и добавив дополнительные отчеты.
